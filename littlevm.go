@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"fmt"
 	"log"
 	"os"
@@ -97,7 +96,88 @@ func VMInit(bytecode []byte) VMContext {
 	return vm
 }
 
+func VMValueRead(b []byte, s byte) uint64 {
+	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
+		PrintErrorAndExit("Invalid instruction!")
+	}
+
+	if len(b) < int(s) {
+		PrintErrorAndExit("Invalid memory read!")
+	}
+
+	var v uint64
+	var i byte
+
+	for i = 0; i < s; i++ {
+		v = v | (uint64(b[i]) << (8 * i))
+	}
+
+	return v
+}
+
+func VMValueWrite(b []byte, s byte, v uint64) []byte {
+	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
+		PrintErrorAndExit("Invalid instruction!")
+	}
+
+	if len(b) < int(s) {
+		PrintErrorAndExit("Invalid memory write!")
+	}
+
+	var i byte
+
+	for i = 0; i < s; i++ {
+		b[i] = byte(v & 0xff)
+		v = v >> 8
+	}
+
+	return b
+}
+
+func VMValueDecodeSize(b byte) byte {
+	if (b & 0b11000000) != 0 {
+		PrintErrorAndExit("Invalid instruction!")
+	}
+
+	s := (b & 0b1111)
+
+	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
+		PrintErrorAndExit("Invalid instruction!")
+	}
+
+	return s
+}
+
+func VMValueDecodeIsSigned(b byte) bool {
+	if (b & 0b11000000) != 0 {
+		PrintErrorAndExit("Invalid instruction!")
+	}
+
+	s := (b & 0b1111)
+
+	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
+		PrintErrorAndExit("Invalid instruction!")
+	}
+
+	return ((b & 0b10000) == 0b10000)
+}
+
+func VMValueDecodeIsIndirect(b byte) bool {
+	if (b & 0b11000000) != 0 {
+		PrintErrorAndExit("Invalid instruction!")
+	}
+
+	s := (b & 0b1111)
+
+	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
+		PrintErrorAndExit("Invalid instruction!")
+	}
+
+	return ((b & 0b100000) == 0b100000)
+}
+
 func VMTick(vm VMContext) VMContext {
+
 	switch vm.BCM[vm.PC] {
 
 	case OP_HALT:
@@ -112,57 +192,81 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_CALL:
 
-		v_a := binary.LittleEndian.Uint64(vm.SM[vm.SP-8:])
+		va := VMValueRead(vm.SM[vm.SP-8:], 8)
 		vm.SP -= 8
 
-		binary.LittleEndian.PutUint64(vm.SM[vm.SP:], vm.FP)
+		VMValueWrite(vm.SM[vm.SP:], 8, vm.FP)
 		vm.SP += 8
-		binary.LittleEndian.PutUint64(vm.SM[vm.SP:], vm.PC+1)
+		VMValueWrite(vm.SM[vm.SP:], 8, vm.PC+1)
 		vm.SP += 8
 
 		vm.FP = vm.SP
-		vm.PC = vm.PC + v_a
+		vm.PC = vm.PC + va
 
 	case OP_RETURN:
 
 		vm.PC += 1
 
-		v_a := binary.LittleEndian.Uint64(vm.SM[vm.FP-8:])
+		va := VMValueRead(vm.SM[vm.SP-8:], 8)
+		vm.SP -= 8
 
-		v_b := binary.LittleEndian.Uint64(vm.SM[vm.FP-16:])
+		vx := VMValueRead(vm.SM[vm.FP-8:], 8)
+		vy := VMValueRead(vm.SM[vm.FP-16:], 8)
 
-		v_c := binary.LittleEndian.Uint64(vm.SM[vm.SP-8:]) + vm.FP
+		b1 := vm.BCM[vm.PC]
 
-		if vm.BCM[vm.PC] == 0 {
-			vm.SP = v_c
+		if b1 == 0 {
+			vm.SP = va + vm.FP
+		} else {
+			var vj uint64
+
+			if VMValueDecodeIsIndirect(b1) {
+				vb := VMValueRead(vm.SM[vm.SP-8:], 8)
+				vm.SP -= 8
+
+				vj = VMValueRead(vm.SM[vm.FP+vb:], VMValueDecodeSize(b1))
+			} else {
+				vj = VMValueRead(vm.SM[vm.SP-uint64(VMValueDecodeSize(b1)):],
+					VMValueDecodeSize(b1))
+
+				vm.SP = vm.SP - uint64(VMValueDecodeSize(b1))
+			}
+
+			vm.SP = va + vm.FP
+
+			VMValueWrite(vm.SM[vm.SP:], VMValueDecodeSize(b1), vj)
+			vm.SP = vm.SP + uint64(VMValueDecodeSize(b1))
 		}
 
-		vm.PC = v_a
-
-		vm.FP = v_b
+		vm.PC = vx
+		vm.FP = vy
 
 	case OP_JUMP:
 	case OP_BRANCH:
 
 	case OP_PUSH:
-		vm.PC += 1
-
-		s := vm.BCM[vm.PC]
-
-		if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
-			PrintErrorAndExit("Invalid Instruction!")
-		}
 
 		vm.PC += 1
 
-		for s != 0 {
-			vm.SM[vm.SP] = vm.BCM[vm.PC]
-			vm.SP += 1
-			vm.PC += 1
-			s -= 1
-		}
+		b1 := vm.BCM[vm.PC]
+
+		vm.PC += 1
+
+		VMValueWrite(vm.SM[vm.SP:], VMValueDecodeSize(b1),
+			VMValueRead(vm.BCM[vm.PC:], VMValueDecodeSize(b1)))
+
+		vm.SP = vm.SP + uint64(VMValueDecodeSize(b1))
+		vm.PC = vm.PC + uint64(VMValueDecodeSize(b1))
 
 	case OP_POP:
+
+		vm.PC += 1
+
+		b1 := vm.BCM[vm.PC]
+
+		vm.SP = vm.SP - uint64(VMValueDecodeSize(b1))
+		vm.PC += 1
+
 	case OP_ASSIGN:
 
 	case OP_ADD:
@@ -194,10 +298,11 @@ func VMTick(vm VMContext) VMContext {
 	case OP_STORE_STRING:
 
 	default:
-		PrintErrorAndExit("Invalid Instruction!")
+		PrintErrorAndExit("Invalid instruction!")
 	}
 
 	return vm
+
 }
 
 func VMRun(vm VMContext) {
