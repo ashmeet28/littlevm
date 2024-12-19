@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"os"
+	"time"
 )
 
 type VMContext struct {
@@ -90,29 +92,76 @@ func VMInit(bytecode []byte) VMContext {
 		PrintErrorAndExit("Bytecode size exceeds the permitted limits!")
 	}
 
-	copy(bytecode, vm.BCM)
+	copy(vm.BCM, bytecode)
 
 	return vm
 }
 
-func VMTick(vm VMContext) {
-	op := vm.BCM[vm.PC]
+func VMTick(vm VMContext) VMContext {
+	switch vm.BCM[vm.PC] {
 
-	switch op {
 	case OP_HALT:
+
 		vm.Status = VMS_HALT
-		vm.PC++
+		vm.PC += 1
+
 	case OP_ECALL:
+
 		vm.Status = VMS_ECALL
-		vm.PC++
+		vm.PC += 1
 
 	case OP_CALL:
+
+		v_a := binary.LittleEndian.Uint64(vm.SM[vm.SP-8:])
+		vm.SP -= 8
+
+		binary.LittleEndian.PutUint64(vm.SM[vm.SP:], vm.FP)
+		vm.SP += 8
+		binary.LittleEndian.PutUint64(vm.SM[vm.SP:], vm.PC+1)
+		vm.SP += 8
+
+		vm.FP = vm.SP
+		vm.PC = vm.PC + v_a
+
 	case OP_RETURN:
+
+		vm.PC += 1
+
+		v_a := binary.LittleEndian.Uint64(vm.SM[vm.FP-8:])
+
+		v_b := binary.LittleEndian.Uint64(vm.SM[vm.FP-16:])
+
+		v_c := binary.LittleEndian.Uint64(vm.SM[vm.SP-8:]) + vm.FP
+
+		if vm.BCM[vm.PC] == 0 {
+			vm.SP = v_c
+		}
+
+		vm.PC = v_a
+
+		vm.FP = v_b
 
 	case OP_JUMP:
 	case OP_BRANCH:
 
 	case OP_PUSH:
+		vm.PC += 1
+
+		s := vm.BCM[vm.PC]
+
+		if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
+			PrintErrorAndExit("Invalid Instruction!")
+		}
+
+		vm.PC += 1
+
+		for s != 0 {
+			vm.SM[vm.SP] = vm.BCM[vm.PC]
+			vm.SP += 1
+			vm.PC += 1
+			s -= 1
+		}
+
 	case OP_POP:
 	case OP_ASSIGN:
 
@@ -143,8 +192,31 @@ func VMTick(vm VMContext) {
 	case OP_STORE:
 
 	case OP_STORE_STRING:
+
+	default:
+		PrintErrorAndExit("Invalid Instruction!")
 	}
 
+	return vm
+}
+
+func VMRun(vm VMContext) {
+	for vm.Status == VMS_RUNNING {
+		vm = VMTick(vm)
+		VMPrint(vm)
+		time.Sleep(time.Millisecond * 500)
+	}
+
+	if vm.Status == VMS_HALT {
+		VMPrint(vm)
+	}
+}
+
+func VMPrint(vm VMContext) {
+	fmt.Println(vm.PC)
+	fmt.Println(vm.FP)
+	fmt.Println(vm.SP)
+	fmt.Println(vm.SM[:64])
 }
 
 func PrintErrorAndExit(s string) {
@@ -161,5 +233,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	VMInit(data)
+	VMRun(VMInit(data))
 }
