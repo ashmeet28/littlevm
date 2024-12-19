@@ -205,15 +205,13 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_RETURN:
 
-		vm.PC += 1
-
 		va := VMValueRead(vm.SM[vm.SP-8:], 8)
 		vm.SP -= 8
 
 		vx := VMValueRead(vm.SM[vm.FP-8:], 8)
 		vy := VMValueRead(vm.SM[vm.FP-16:], 8)
 
-		b1 := vm.BCM[vm.PC]
+		b1 := vm.BCM[vm.PC+1]
 
 		if b1 == 0 {
 			vm.SP = va + vm.FP
@@ -246,26 +244,20 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_PUSH:
 
-		vm.PC += 1
-
-		b1 := vm.BCM[vm.PC]
-
-		vm.PC += 1
+		b1 := vm.BCM[vm.PC+1]
 
 		VMValueWrite(vm.SM[vm.SP:], VMValueDecodeSize(b1),
-			VMValueRead(vm.BCM[vm.PC:], VMValueDecodeSize(b1)))
+			VMValueRead(vm.BCM[vm.PC+2:], VMValueDecodeSize(b1)))
 
 		vm.SP = vm.SP + uint64(VMValueDecodeSize(b1))
-		vm.PC = vm.PC + uint64(VMValueDecodeSize(b1))
+		vm.PC = vm.PC + 2 + uint64(VMValueDecodeSize(b1))
 
 	case OP_POP:
 
-		vm.PC += 1
-
-		b1 := vm.BCM[vm.PC]
+		b1 := vm.BCM[vm.PC+1]
 
 		vm.SP = vm.SP - uint64(VMValueDecodeSize(b1))
-		vm.PC += 1
+		vm.PC += 2
 
 	case OP_ASSIGN:
 
