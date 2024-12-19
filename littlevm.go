@@ -11,8 +11,8 @@ type VMContext struct {
 	MM  []byte // Main Memory
 	ECM []byte // Environment Call Memory
 
-	BCM []byte // Bytecode Memory
-	SM  []byte // Stack Memory
+	BM []byte // Bytecode Memory
+	SM []byte // Stack Memory
 
 	PC uint64 // Program Counter
 	FP uint64 // Frame Pointer
@@ -77,8 +77,8 @@ func VMInit(bytecode []byte) VMContext {
 		MM:  make([]byte, 0x1000),
 		ECM: make([]byte, 0x1000),
 
-		BCM: make([]byte, 0x1000),
-		SM:  make([]byte, 0x1000),
+		BM: make([]byte, 0x1000),
+		SM: make([]byte, 0x1000),
 
 		PC: 0,
 		FP: 0,
@@ -87,11 +87,11 @@ func VMInit(bytecode []byte) VMContext {
 		Status: VMS_RUNNING,
 	}
 
-	if len(bytecode) > len(vm.BCM) {
+	if len(bytecode) > len(vm.BM) {
 		PrintErrorAndExit("Bytecode size exceeds the permitted limits!")
 	}
 
-	copy(vm.BCM, bytecode)
+	copy(vm.BM, bytecode)
 
 	return vm
 }
@@ -127,8 +127,7 @@ func VMValW(b []byte, s byte, v uint64) []byte {
 	var i byte
 
 	for i = 0; i < s; i++ {
-		b[i] = byte(v & 0xff)
-		v = v >> 8
+		b[i] = byte((v >> (8 * i)) & 0xff)
 	}
 
 	return b
@@ -144,6 +143,7 @@ func VMValInfoIsValid(b byte) bool {
 	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
 		return false
 	}
+
 	return true
 }
 
@@ -171,9 +171,26 @@ func VMValInfoIsIndirect(b byte) bool {
 	return ((b & 0b100000) == 0b100000)
 }
 
+func VMPopVal(vm VMContext, valInfo byte) (VMContext, uint64) {
+	var v uint64
+
+	if VMValInfoIsIndirect(valInfo) {
+		va := VMValR(vm.SM[vm.SP-8:], 8)
+		vm.SP -= 8
+
+		v = VMValR(vm.SM[vm.FP+va:], VMValInfoSize(valInfo))
+	} else {
+		v = VMValR(vm.SM[vm.SP-uint64(VMValInfoSize(valInfo)):], VMValInfoSize(valInfo))
+
+		vm.SP = vm.SP - uint64(VMValInfoSize(valInfo))
+	}
+
+	return vm, v
+}
+
 func VMTick(vm VMContext) VMContext {
 
-	switch vm.BCM[vm.PC] {
+	switch vm.BM[vm.PC] {
 
 	case OP_HALT:
 
@@ -206,7 +223,7 @@ func VMTick(vm VMContext) VMContext {
 		vx := VMValR(vm.SM[vm.FP-8:], 8)
 		vy := VMValR(vm.SM[vm.FP-16:], 8)
 
-		b1 := vm.BCM[vm.PC+1]
+		b1 := vm.BM[vm.PC+1]
 
 		if b1 == 0 {
 
@@ -215,17 +232,7 @@ func VMTick(vm VMContext) VMContext {
 		} else {
 
 			var vj uint64
-
-			if VMValInfoIsIndirect(b1) {
-				vb := VMValR(vm.SM[vm.SP-8:], 8)
-				vm.SP -= 8
-
-				vj = VMValR(vm.SM[vm.FP+vb:], VMValInfoSize(b1))
-			} else {
-				vj = VMValR(vm.SM[vm.SP-uint64(VMValInfoSize(b1)):], VMValInfoSize(b1))
-
-				vm.SP = vm.SP - uint64(VMValInfoSize(b1))
-			}
+			vm, vj = VMPopVal(vm, b1)
 
 			vm.SP = va + vm.FP
 
@@ -242,16 +249,16 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_PUSH:
 
-		b1 := vm.BCM[vm.PC+1]
+		b1 := vm.BM[vm.PC+1]
 
-		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), VMValR(vm.BCM[vm.PC+2:], VMValInfoSize(b1)))
+		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), VMValR(vm.BM[vm.PC+2:], VMValInfoSize(b1)))
 
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
 		vm.PC = vm.PC + 2 + uint64(VMValInfoSize(b1))
 
 	case OP_POP:
 
-		b1 := vm.BCM[vm.PC+1]
+		b1 := vm.BM[vm.PC+1]
 
 		vm.SP = vm.SP - uint64(VMValInfoSize(b1))
 		vm.PC += 2
@@ -260,38 +267,18 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_ADD:
 
-		b1 := vm.BCM[vm.PC+1]
-		b2 := vm.BCM[vm.PC+2]
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
 
 		if (b1 & 0b11111) != (b2 & 0b11111) {
 			PrintErrorAndExit("Invalid instruction!")
 		}
 
 		var vj uint64
-
-		if VMValInfoIsIndirect(b1) {
-			va := VMValR(vm.SM[vm.SP-8:], 8)
-			vm.SP -= 8
-
-			vj = VMValR(vm.SM[vm.FP+va:], VMValInfoSize(b1))
-		} else {
-			vj = VMValR(vm.SM[vm.SP-uint64(VMValInfoSize(b1)):], VMValInfoSize(b1))
-
-			vm.SP = vm.SP - uint64(VMValInfoSize(b1))
-		}
-
 		var vk uint64
 
-		if VMValInfoIsIndirect(b2) {
-			va := VMValR(vm.SM[vm.SP-8:], 8)
-			vm.SP -= 8
-
-			vk = VMValR(vm.SM[vm.FP+va:], VMValInfoSize(b2))
-		} else {
-			vk = VMValR(vm.SM[vm.SP-uint64(VMValInfoSize(b2)):], VMValInfoSize(b2))
-
-			vm.SP = vm.SP - uint64(VMValInfoSize(b2))
-		}
+		vm, vk = VMPopVal(vm, b2)
+		vm, vj = VMPopVal(vm, b1)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj+vk)
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -300,11 +287,108 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_SUB:
 
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMPopVal(vm, b2)
+		vm, vj = VMPopVal(vm, b1)
+
+		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj+((^vk)+1))
+		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
+
+		vm.PC += 3
+
 	case OP_AND:
+
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMPopVal(vm, b2)
+		vm, vj = VMPopVal(vm, b1)
+
+		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj&vk)
+		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
+
+		vm.PC += 3
+
 	case OP_OR:
+
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMPopVal(vm, b2)
+		vm, vj = VMPopVal(vm, b1)
+
+		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj|vk)
+		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
+
+		vm.PC += 3
+
 	case OP_XOR:
 
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMPopVal(vm, b2)
+		vm, vj = VMPopVal(vm, b1)
+
+		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj^vk)
+		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
+
+		vm.PC += 3
+
 	case OP_SHL:
+
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMPopVal(vm, b2)
+		vm, vj = VMPopVal(vm, b1)
+
+		if VMValInfoIsSigned(b2) &&
+			((vk & (uint64(1) << (uint64(VMValInfoSize(b2)*8) - 1))) ==
+				(uint64(1) << (uint64(VMValInfoSize(b2)*8) - 1))) {
+
+			PrintErrorAndExit("Negative shift count!")
+
+		}
+
+		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj<<vk)
+		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
+
+		vm.PC += 3
+
 	case OP_SHR:
 
 	case OP_MUL:
@@ -349,7 +433,10 @@ func VMPrint(vm VMContext) {
 	fmt.Println(vm.PC)
 	fmt.Println(vm.FP)
 	fmt.Println(vm.SP)
-	fmt.Println(vm.SM[:64])
+	fmt.Println(vm.SM[:16])
+	fmt.Println(vm.SM[16 : 16*2])
+	fmt.Println(vm.SM[16*2 : 16*3])
+	fmt.Println(vm.SM[16*3 : 16*4])
 }
 
 func PrintErrorAndExit(s string) {
