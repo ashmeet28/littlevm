@@ -96,7 +96,7 @@ func VMInit(bytecode []byte) VMContext {
 	return vm
 }
 
-func VMValueRead(b []byte, s byte) uint64 {
+func VMValR(b []byte, s byte) uint64 {
 	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
 		PrintErrorAndExit("Invalid instruction!")
 	}
@@ -115,7 +115,7 @@ func VMValueRead(b []byte, s byte) uint64 {
 	return v
 }
 
-func VMValueWrite(b []byte, s byte, v uint64) []byte {
+func VMValW(b []byte, s byte, v uint64) []byte {
 	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
 		PrintErrorAndExit("Invalid instruction!")
 	}
@@ -134,42 +134,37 @@ func VMValueWrite(b []byte, s byte, v uint64) []byte {
 	return b
 }
 
-func VMValueDecodeSize(b byte) byte {
+func VMValInfoIsValid(b byte) bool {
 	if (b & 0b11000000) != 0 {
-		PrintErrorAndExit("Invalid instruction!")
+		return false
 	}
 
 	s := (b & 0b1111)
 
 	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
-		PrintErrorAndExit("Invalid instruction!")
+		return false
 	}
-
-	return s
+	return true
 }
 
-func VMValueDecodeIsSigned(b byte) bool {
-	if (b & 0b11000000) != 0 {
+func VMValInfoSize(b byte) byte {
+	if !VMValInfoIsValid(b) {
 		PrintErrorAndExit("Invalid instruction!")
 	}
 
-	s := (b & 0b1111)
+	return (b & 0b1111)
+}
 
-	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
+func VMValInfoIsSigned(b byte) bool {
+	if !VMValInfoIsValid(b) {
 		PrintErrorAndExit("Invalid instruction!")
 	}
 
 	return ((b & 0b10000) == 0b10000)
 }
 
-func VMValueDecodeIsIndirect(b byte) bool {
-	if (b & 0b11000000) != 0 {
-		PrintErrorAndExit("Invalid instruction!")
-	}
-
-	s := (b & 0b1111)
-
-	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
+func VMValInfoIsIndirect(b byte) bool {
+	if !VMValInfoIsValid(b) {
 		PrintErrorAndExit("Invalid instruction!")
 	}
 
@@ -192,12 +187,12 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_CALL:
 
-		va := VMValueRead(vm.SM[vm.SP-8:], 8)
+		va := VMValR(vm.SM[vm.SP-8:], 8)
 		vm.SP -= 8
 
-		VMValueWrite(vm.SM[vm.SP:], 8, vm.FP)
+		VMValW(vm.SM[vm.SP:], 8, vm.FP)
 		vm.SP += 8
-		VMValueWrite(vm.SM[vm.SP:], 8, vm.PC+1)
+		VMValW(vm.SM[vm.SP:], 8, vm.PC+1)
 		vm.SP += 8
 
 		vm.FP = vm.SP
@@ -205,35 +200,38 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_RETURN:
 
-		va := VMValueRead(vm.SM[vm.SP-8:], 8)
+		va := VMValR(vm.SM[vm.SP-8:], 8)
 		vm.SP -= 8
 
-		vx := VMValueRead(vm.SM[vm.FP-8:], 8)
-		vy := VMValueRead(vm.SM[vm.FP-16:], 8)
+		vx := VMValR(vm.SM[vm.FP-8:], 8)
+		vy := VMValR(vm.SM[vm.FP-16:], 8)
 
 		b1 := vm.BCM[vm.PC+1]
 
 		if b1 == 0 {
+
 			vm.SP = va + vm.FP
+
 		} else {
+
 			var vj uint64
 
-			if VMValueDecodeIsIndirect(b1) {
-				vb := VMValueRead(vm.SM[vm.SP-8:], 8)
+			if VMValInfoIsIndirect(b1) {
+				vb := VMValR(vm.SM[vm.SP-8:], 8)
 				vm.SP -= 8
 
-				vj = VMValueRead(vm.SM[vm.FP+vb:], VMValueDecodeSize(b1))
+				vj = VMValR(vm.SM[vm.FP+vb:], VMValInfoSize(b1))
 			} else {
-				vj = VMValueRead(vm.SM[vm.SP-uint64(VMValueDecodeSize(b1)):],
-					VMValueDecodeSize(b1))
+				vj = VMValR(vm.SM[vm.SP-uint64(VMValInfoSize(b1)):], VMValInfoSize(b1))
 
-				vm.SP = vm.SP - uint64(VMValueDecodeSize(b1))
+				vm.SP = vm.SP - uint64(VMValInfoSize(b1))
 			}
 
 			vm.SP = va + vm.FP
 
-			VMValueWrite(vm.SM[vm.SP:], VMValueDecodeSize(b1), vj)
-			vm.SP = vm.SP + uint64(VMValueDecodeSize(b1))
+			VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj)
+			vm.SP = vm.SP + uint64(VMValInfoSize(b1))
+
 		}
 
 		vm.PC = vx
@@ -246,22 +244,60 @@ func VMTick(vm VMContext) VMContext {
 
 		b1 := vm.BCM[vm.PC+1]
 
-		VMValueWrite(vm.SM[vm.SP:], VMValueDecodeSize(b1),
-			VMValueRead(vm.BCM[vm.PC+2:], VMValueDecodeSize(b1)))
+		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), VMValR(vm.BCM[vm.PC+2:], VMValInfoSize(b1)))
 
-		vm.SP = vm.SP + uint64(VMValueDecodeSize(b1))
-		vm.PC = vm.PC + 2 + uint64(VMValueDecodeSize(b1))
+		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
+		vm.PC = vm.PC + 2 + uint64(VMValInfoSize(b1))
 
 	case OP_POP:
 
 		b1 := vm.BCM[vm.PC+1]
 
-		vm.SP = vm.SP - uint64(VMValueDecodeSize(b1))
+		vm.SP = vm.SP - uint64(VMValInfoSize(b1))
 		vm.PC += 2
 
 	case OP_ASSIGN:
 
 	case OP_ADD:
+
+		b1 := vm.BCM[vm.PC+1]
+		b2 := vm.BCM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+
+		if VMValInfoIsIndirect(b1) {
+			va := VMValR(vm.SM[vm.SP-8:], 8)
+			vm.SP -= 8
+
+			vj = VMValR(vm.SM[vm.FP+va:], VMValInfoSize(b1))
+		} else {
+			vj = VMValR(vm.SM[vm.SP-uint64(VMValInfoSize(b1)):], VMValInfoSize(b1))
+
+			vm.SP = vm.SP - uint64(VMValInfoSize(b1))
+		}
+
+		var vk uint64
+
+		if VMValInfoIsIndirect(b2) {
+			va := VMValR(vm.SM[vm.SP-8:], 8)
+			vm.SP -= 8
+
+			vk = VMValR(vm.SM[vm.FP+va:], VMValInfoSize(b2))
+		} else {
+			vk = VMValR(vm.SM[vm.SP-uint64(VMValInfoSize(b2)):], VMValInfoSize(b2))
+
+			vm.SP = vm.SP - uint64(VMValInfoSize(b2))
+		}
+
+		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj+vk)
+		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
+
+		vm.PC += 3
+
 	case OP_SUB:
 
 	case OP_AND:
@@ -301,7 +337,7 @@ func VMRun(vm VMContext) {
 	for vm.Status == VMS_RUNNING {
 		vm = VMTick(vm)
 		VMPrint(vm)
-		time.Sleep(time.Millisecond * 500)
+		time.Sleep(time.Millisecond * 250)
 	}
 
 	if vm.Status == VMS_HALT {
