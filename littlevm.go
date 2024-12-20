@@ -245,7 +245,28 @@ func VMTick(vm VMContext) VMContext {
 		vm.FP = vy
 
 	case OP_JUMP:
+
+		va := VMValR(vm.SM[vm.SP-8:], 8)
+		vm.SP -= 8
+
+		vm.PC = vm.PC + va
+
 	case OP_BRANCH:
+
+		b1 := vm.BM[vm.PC+1]
+
+		va := VMValR(vm.SM[vm.SP-8:], 8)
+		vm.SP -= 8
+
+		var vj uint64
+
+		vm, vj = VMPopVal(vm, b1)
+
+		if vj == 0 {
+			vm.PC = vm.PC + va
+		} else {
+			vm.PC += 2
+		}
 
 	case OP_PUSH:
 
@@ -391,12 +412,123 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_SHR:
 
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMPopVal(vm, b2)
+		vm, vj = VMPopVal(vm, b1)
+
+		if VMValInfoIsSigned(b2) &&
+			((vk & (uint64(1) << ((uint64(VMValInfoSize(b2)) * 8) - 1))) ==
+				(uint64(1) << ((uint64(VMValInfoSize(b2)) * 8) - 1))) {
+
+			PrintErrorAndExit("Negative shift count!")
+
+		}
+
+		var vl uint64
+
+		if VMValInfoIsSigned(b1) &&
+			((vj & (uint64(1) << (uint64(VMValInfoSize(b1)*8) - 1))) ==
+				(uint64(1) << (uint64(VMValInfoSize(b1)*8) - 1))) {
+
+			if vk > uint64(VMValInfoSize(b1)) {
+				vl = (^uint64(0))
+			} else {
+				vl = (vj >> vk) | ((^uint64(0)) << ((uint64(VMValInfoSize(b1)) * 8) - vk))
+			}
+
+		} else {
+			vl = vj >> vk
+		}
+
+		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vl)
+		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
+
+		vm.PC += 3
+
 	case OP_MUL:
+
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMPopVal(vm, b2)
+		vm, vj = VMPopVal(vm, b1)
+
+		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj*vk)
+		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
+
+		vm.PC += 3
+
 	case OP_QUO:
 	case OP_REM:
 
 	case OP_EQL:
+
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMPopVal(vm, b2)
+		vm, vj = VMPopVal(vm, b1)
+
+		var vl uint64
+
+		if vk == vj {
+			vl = 1
+		} else {
+			vl = 0
+		}
+
+		VMValW(vm.SM[vm.SP:], 1, vl)
+		vm.SP += 1
+
+		vm.PC += 3
+
 	case OP_NEQ:
+
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMPopVal(vm, b2)
+		vm, vj = VMPopVal(vm, b1)
+
+		var vl uint64
+
+		if vk != vj {
+			vl = 1
+		} else {
+			vl = 0
+		}
+
+		VMValW(vm.SM[vm.SP:], 1, vl)
+		vm.SP += 1
+
+		vm.PC += 3
+
 	case OP_LSS:
 	case OP_GTR:
 	case OP_LEQ:
