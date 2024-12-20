@@ -286,6 +286,27 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_ASSIGN:
 
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+		}
+
+		if !VMValInfoIsIndirect(b1) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vk uint64
+
+		vm, vk = VMPopVal(vm, b2)
+
+		va := VMValR(vm.SM[vm.SP-8:], 8)
+		vm.SP -= 8
+
+		VMValW(vm.SM[vm.FP+va:], VMValInfoSize(b2), vk)
+
+		vm.PC += 3
+
 	case OP_ADD:
 
 		b1 := vm.BM[vm.PC+1]
