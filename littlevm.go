@@ -140,11 +140,7 @@ func VMValInfoIsValid(b byte) bool {
 
 	s := (b & 0b1111)
 
-	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
-		return false
-	}
-
-	return true
+	return ((s == 1) || (s == 2) || (s == 4) || (s == 8))
 }
 
 func VMValInfoSize(b byte) byte {
@@ -171,7 +167,15 @@ func VMValInfoIsIndirect(b byte) bool {
 	return ((b & 0b100000) == 0b100000)
 }
 
-func VMPopVal(vm VMContext, valInfo byte) (VMContext, uint64) {
+func VMValSignBit(v uint64, s byte) byte {
+	if (v & (uint64(1) << ((uint64(s) * 8) - 1))) == (uint64(1) << ((uint64(s) * 8) - 1)) {
+		return 1
+	} else {
+		return 0
+	}
+}
+
+func VMValPop(vm VMContext, valInfo byte) (VMContext, uint64) {
 	var v uint64
 
 	if VMValInfoIsIndirect(valInfo) {
@@ -232,7 +236,7 @@ func VMTick(vm VMContext) VMContext {
 		} else {
 
 			var vj uint64
-			vm, vj = VMPopVal(vm, b1)
+			vm, vj = VMValPop(vm, b1)
 
 			vm.SP = va + vm.FP
 
@@ -260,7 +264,7 @@ func VMTick(vm VMContext) VMContext {
 
 		var vj uint64
 
-		vm, vj = VMPopVal(vm, b1)
+		vm, vj = VMValPop(vm, b1)
 
 		if vj == 0 {
 			vm.PC = vm.PC + va
@@ -298,7 +302,7 @@ func VMTick(vm VMContext) VMContext {
 
 		var vk uint64
 
-		vm, vk = VMPopVal(vm, b2)
+		vm, vk = VMValPop(vm, b2)
 
 		va := VMValR(vm.SM[vm.SP-8:], 8)
 		vm.SP -= 8
@@ -319,8 +323,8 @@ func VMTick(vm VMContext) VMContext {
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMPopVal(vm, b2)
-		vm, vj = VMPopVal(vm, b1)
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj+vk)
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -339,8 +343,8 @@ func VMTick(vm VMContext) VMContext {
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMPopVal(vm, b2)
-		vm, vj = VMPopVal(vm, b1)
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj+((^vk)+1))
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -359,8 +363,8 @@ func VMTick(vm VMContext) VMContext {
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMPopVal(vm, b2)
-		vm, vj = VMPopVal(vm, b1)
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj&vk)
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -379,8 +383,8 @@ func VMTick(vm VMContext) VMContext {
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMPopVal(vm, b2)
-		vm, vj = VMPopVal(vm, b1)
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj|vk)
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -399,8 +403,8 @@ func VMTick(vm VMContext) VMContext {
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMPopVal(vm, b2)
-		vm, vj = VMPopVal(vm, b1)
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj^vk)
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -415,15 +419,11 @@ func VMTick(vm VMContext) VMContext {
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMPopVal(vm, b2)
-		vm, vj = VMPopVal(vm, b1)
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
 
-		if VMValInfoIsSigned(b2) &&
-			((vk & (uint64(1) << (uint64(VMValInfoSize(b2)*8) - 1))) ==
-				(uint64(1) << (uint64(VMValInfoSize(b2)*8) - 1))) {
-
+		if VMValInfoIsSigned(b2) && (VMValSignBit(vk, VMValInfoSize(b2)) == 1) {
 			PrintErrorAndExit("Negative shift count!")
-
 		}
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj<<vk)
@@ -439,22 +439,16 @@ func VMTick(vm VMContext) VMContext {
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMPopVal(vm, b2)
-		vm, vj = VMPopVal(vm, b1)
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
 
-		if VMValInfoIsSigned(b2) &&
-			((vk & (uint64(1) << ((uint64(VMValInfoSize(b2)) * 8) - 1))) ==
-				(uint64(1) << ((uint64(VMValInfoSize(b2)) * 8) - 1))) {
-
+		if VMValInfoIsSigned(b2) && (VMValSignBit(vk, VMValInfoSize(b2)) == 1) {
 			PrintErrorAndExit("Negative shift count!")
-
 		}
 
 		var vl uint64
 
-		if VMValInfoIsSigned(b1) &&
-			((vj & (uint64(1) << (uint64(VMValInfoSize(b1)*8) - 1))) ==
-				(uint64(1) << (uint64(VMValInfoSize(b1)*8) - 1))) {
+		if VMValInfoIsSigned(b1) && (VMValSignBit(vj, VMValInfoSize(b1)) == 1) {
 
 			if vk > uint64(VMValInfoSize(b1)) {
 				vl = (^uint64(0))
@@ -483,8 +477,8 @@ func VMTick(vm VMContext) VMContext {
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMPopVal(vm, b2)
-		vm, vj = VMPopVal(vm, b1)
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj*vk)
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -506,12 +500,12 @@ func VMTick(vm VMContext) VMContext {
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMPopVal(vm, b2)
-		vm, vj = VMPopVal(vm, b1)
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
 
 		var vl uint64
 
-		if vk == vj {
+		if vj == vk {
 			vl = 1
 		} else {
 			vl = 0
@@ -534,12 +528,12 @@ func VMTick(vm VMContext) VMContext {
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMPopVal(vm, b2)
-		vm, vj = VMPopVal(vm, b1)
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
 
 		var vl uint64
 
-		if vk != vj {
+		if vj != vk {
 			vl = 1
 		} else {
 			vl = 0
@@ -551,9 +545,192 @@ func VMTick(vm VMContext) VMContext {
 		vm.PC += 3
 
 	case OP_LSS:
+
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
+
+		var vl uint64
+
+		if VMValInfoIsSigned(b1) {
+
+			vjs := (VMValSignBit(vj, VMValInfoSize(b1)) == 1)
+			vks := (VMValSignBit(vk, VMValInfoSize(b2)) == 1)
+
+			if vjs && (!vks) {
+				vl = 1
+			} else if (!vjs) && vks {
+				vl = 0
+			} else {
+				if vj < vk {
+					vl = 1
+				} else {
+					vl = 0
+				}
+			}
+
+		} else {
+			if vj < vk {
+				vl = 1
+			} else {
+				vl = 0
+			}
+		}
+
+		VMValW(vm.SM[vm.SP:], 1, vl)
+		vm.SP += 1
+
+		vm.PC += 3
+
 	case OP_GTR:
+
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
+
+		var vl uint64
+
+		if VMValInfoIsSigned(b1) {
+
+			vjs := (VMValSignBit(vj, VMValInfoSize(b1)) == 1)
+			vks := (VMValSignBit(vk, VMValInfoSize(b2)) == 1)
+
+			if vjs && (!vks) {
+				vl = 0
+			} else if (!vjs) && vks {
+				vl = 1
+			} else {
+				if vj > vk {
+					vl = 1
+				} else {
+					vl = 0
+				}
+			}
+
+		} else {
+			if vj > vk {
+				vl = 1
+			} else {
+				vl = 0
+			}
+		}
+
+		VMValW(vm.SM[vm.SP:], 1, vl)
+		vm.SP += 1
+
+		vm.PC += 3
+
 	case OP_LEQ:
+
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
+
+		var vl uint64
+
+		if VMValInfoIsSigned(b1) {
+
+			vjs := (VMValSignBit(vj, VMValInfoSize(b1)) == 1)
+			vks := (VMValSignBit(vk, VMValInfoSize(b2)) == 1)
+
+			if vjs && (!vks) {
+				vl = 1
+			} else if (!vjs) && vks {
+				vl = 0
+			} else {
+				if vj <= vk {
+					vl = 1
+				} else {
+					vl = 0
+				}
+			}
+
+		} else {
+			if vj <= vk {
+				vl = 1
+			} else {
+				vl = 0
+			}
+		}
+
+		VMValW(vm.SM[vm.SP:], 1, vl)
+		vm.SP += 1
+
+		vm.PC += 3
+
 	case OP_GEQ:
+
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+		var vk uint64
+
+		vm, vk = VMValPop(vm, b2)
+		vm, vj = VMValPop(vm, b1)
+
+		var vl uint64
+
+		if VMValInfoIsSigned(b1) {
+
+			vjs := (VMValSignBit(vj, VMValInfoSize(b1)) == 1)
+			vks := (VMValSignBit(vk, VMValInfoSize(b2)) == 1)
+
+			if vjs && (!vks) {
+				vl = 0
+			} else if (!vjs) && vks {
+				vl = 1
+			} else {
+				if vj >= vk {
+					vl = 1
+				} else {
+					vl = 0
+				}
+			}
+
+		} else {
+			if vj >= vk {
+				vl = 1
+			} else {
+				vl = 0
+			}
+		}
+
+		VMValW(vm.SM[vm.SP:], 1, vl)
+		vm.SP += 1
+
+		vm.PC += 3
 
 	case OP_CONVERT:
 
