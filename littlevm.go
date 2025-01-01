@@ -97,10 +97,6 @@ func VMInit(bytecode []byte) VMContext {
 }
 
 func VMValR(b []byte, s byte) uint64 {
-	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
-		PrintErrorAndExit("Invalid instruction!")
-	}
-
 	var v uint64
 	var i byte
 
@@ -112,10 +108,6 @@ func VMValR(b []byte, s byte) uint64 {
 }
 
 func VMValW(b []byte, s byte, v uint64) []byte {
-	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
-		PrintErrorAndExit("Invalid instruction!")
-	}
-
 	var i byte
 
 	for i = 0; i < s; i++ {
@@ -182,6 +174,27 @@ func VMValPop(vm VMContext, valInfo byte) (VMContext, uint64) {
 	}
 
 	return vm, v
+}
+
+func VMDecodeTypeA(vm VMContext) (VMContext, byte, byte, uint64, uint64) {
+	b1 := vm.BM[vm.PC+1]
+	b2 := vm.BM[vm.PC+2]
+
+	if !(VMValInfoIsValid(b1) && VMValInfoIsValid(b2)) {
+		PrintErrorAndExit("Invalid instruction!")
+	}
+
+	if (b1 & 0b11111) != (b2 & 0b11111) {
+		PrintErrorAndExit("Invalid instruction!")
+	}
+
+	var vj uint64
+	var vk uint64
+
+	vm, vk = VMValPop(vm, b2)
+	vm, vj = VMValPop(vm, b1)
+
+	return vm, b1, b2, vj, vk
 }
 
 func VMTick(vm VMContext) VMContext {
@@ -306,18 +319,12 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_ADD:
 
-		b1 := vm.BM[vm.PC+1]
-		b2 := vm.BM[vm.PC+2]
-
-		if (b1 & 0b11111) != (b2 & 0b11111) {
-			PrintErrorAndExit("Invalid instruction!")
-		}
+		var b1 byte
 
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMValPop(vm, b2)
-		vm, vj = VMValPop(vm, b1)
+		vm, b1, _, vj, vk = VMDecodeTypeA(vm)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj+vk)
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -326,18 +333,12 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_SUB:
 
-		b1 := vm.BM[vm.PC+1]
-		b2 := vm.BM[vm.PC+2]
-
-		if (b1 & 0b11111) != (b2 & 0b11111) {
-			PrintErrorAndExit("Invalid instruction!")
-		}
+		var b1 byte
 
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMValPop(vm, b2)
-		vm, vj = VMValPop(vm, b1)
+		vm, b1, _, vj, vk = VMDecodeTypeA(vm)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj+((^vk)+1))
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -346,18 +347,12 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_AND:
 
-		b1 := vm.BM[vm.PC+1]
-		b2 := vm.BM[vm.PC+2]
-
-		if (b1 & 0b11111) != (b2 & 0b11111) {
-			PrintErrorAndExit("Invalid instruction!")
-		}
+		var b1 byte
 
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMValPop(vm, b2)
-		vm, vj = VMValPop(vm, b1)
+		vm, b1, _, vj, vk = VMDecodeTypeA(vm)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj&vk)
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -366,18 +361,12 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_OR:
 
-		b1 := vm.BM[vm.PC+1]
-		b2 := vm.BM[vm.PC+2]
-
-		if (b1 & 0b11111) != (b2 & 0b11111) {
-			PrintErrorAndExit("Invalid instruction!")
-		}
+		var b1 byte
 
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMValPop(vm, b2)
-		vm, vj = VMValPop(vm, b1)
+		vm, b1, _, vj, vk = VMDecodeTypeA(vm)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj|vk)
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -386,18 +375,12 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_XOR:
 
-		b1 := vm.BM[vm.PC+1]
-		b2 := vm.BM[vm.PC+2]
-
-		if (b1 & 0b11111) != (b2 & 0b11111) {
-			PrintErrorAndExit("Invalid instruction!")
-		}
+		var b1 byte
 
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMValPop(vm, b2)
-		vm, vj = VMValPop(vm, b1)
+		vm, b1, _, vj, vk = VMDecodeTypeA(vm)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj^vk)
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -408,6 +391,10 @@ func VMTick(vm VMContext) VMContext {
 
 		b1 := vm.BM[vm.PC+1]
 		b2 := vm.BM[vm.PC+2]
+
+		if !(VMValInfoIsValid(b1) && VMValInfoIsValid(b2)) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
 
 		var vj uint64
 		var vk uint64
@@ -428,6 +415,10 @@ func VMTick(vm VMContext) VMContext {
 
 		b1 := vm.BM[vm.PC+1]
 		b2 := vm.BM[vm.PC+2]
+
+		if !(VMValInfoIsValid(b1) && VMValInfoIsValid(b2)) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
 
 		var vj uint64
 		var vk uint64
@@ -460,18 +451,12 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_MUL:
 
-		b1 := vm.BM[vm.PC+1]
-		b2 := vm.BM[vm.PC+2]
-
-		if (b1 & 0b11111) != (b2 & 0b11111) {
-			PrintErrorAndExit("Invalid instruction!")
-		}
+		var b1 byte
 
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMValPop(vm, b2)
-		vm, vj = VMValPop(vm, b1)
+		vm, b1, _, vj, vk = VMDecodeTypeA(vm)
 
 		VMValW(vm.SM[vm.SP:], VMValInfoSize(b1), vj*vk)
 		vm.SP = vm.SP + uint64(VMValInfoSize(b1))
@@ -483,18 +468,10 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_EQL:
 
-		b1 := vm.BM[vm.PC+1]
-		b2 := vm.BM[vm.PC+2]
-
-		if (b1 & 0b11111) != (b2 & 0b11111) {
-			PrintErrorAndExit("Invalid instruction!")
-		}
-
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMValPop(vm, b2)
-		vm, vj = VMValPop(vm, b1)
+		vm, _, _, vj, vk = VMDecodeTypeA(vm)
 
 		var vl uint64
 
@@ -511,18 +488,10 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_NEQ:
 
-		b1 := vm.BM[vm.PC+1]
-		b2 := vm.BM[vm.PC+2]
-
-		if (b1 & 0b11111) != (b2 & 0b11111) {
-			PrintErrorAndExit("Invalid instruction!")
-		}
-
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMValPop(vm, b2)
-		vm, vj = VMValPop(vm, b1)
+		vm, _, _, vj, vk = VMDecodeTypeA(vm)
 
 		var vl uint64
 
@@ -539,18 +508,13 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_LSS:
 
-		b1 := vm.BM[vm.PC+1]
-		b2 := vm.BM[vm.PC+2]
-
-		if (b1 & 0b11111) != (b2 & 0b11111) {
-			PrintErrorAndExit("Invalid instruction!")
-		}
+		var b1 byte
+		var b2 byte
 
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMValPop(vm, b2)
-		vm, vj = VMValPop(vm, b1)
+		vm, b1, b2, vj, vk = VMDecodeTypeA(vm)
 
 		var vl uint64
 
@@ -586,18 +550,13 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_GTR:
 
-		b1 := vm.BM[vm.PC+1]
-		b2 := vm.BM[vm.PC+2]
-
-		if (b1 & 0b11111) != (b2 & 0b11111) {
-			PrintErrorAndExit("Invalid instruction!")
-		}
+		var b1 byte
+		var b2 byte
 
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMValPop(vm, b2)
-		vm, vj = VMValPop(vm, b1)
+		vm, b1, b2, vj, vk = VMDecodeTypeA(vm)
 
 		var vl uint64
 
@@ -633,18 +592,13 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_LEQ:
 
-		b1 := vm.BM[vm.PC+1]
-		b2 := vm.BM[vm.PC+2]
-
-		if (b1 & 0b11111) != (b2 & 0b11111) {
-			PrintErrorAndExit("Invalid instruction!")
-		}
+		var b1 byte
+		var b2 byte
 
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMValPop(vm, b2)
-		vm, vj = VMValPop(vm, b1)
+		vm, b1, b2, vj, vk = VMDecodeTypeA(vm)
 
 		var vl uint64
 
@@ -680,18 +634,13 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_GEQ:
 
-		b1 := vm.BM[vm.PC+1]
-		b2 := vm.BM[vm.PC+2]
-
-		if (b1 & 0b11111) != (b2 & 0b11111) {
-			PrintErrorAndExit("Invalid instruction!")
-		}
+		var b1 byte
+		var b2 byte
 
 		var vj uint64
 		var vk uint64
 
-		vm, vk = VMValPop(vm, b2)
-		vm, vj = VMValPop(vm, b1)
+		vm, b1, b2, vj, vk = VMDecodeTypeA(vm)
 
 		var vl uint64
 
