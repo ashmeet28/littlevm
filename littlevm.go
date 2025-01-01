@@ -101,10 +101,6 @@ func VMValR(b []byte, s byte) uint64 {
 		PrintErrorAndExit("Invalid instruction!")
 	}
 
-	if len(b) < int(s) {
-		PrintErrorAndExit("Invalid memory read!")
-	}
-
 	var v uint64
 	var i byte
 
@@ -118,10 +114,6 @@ func VMValR(b []byte, s byte) uint64 {
 func VMValW(b []byte, s byte, v uint64) []byte {
 	if (s != 1) && (s != 2) && (s != 4) && (s != 8) {
 		PrintErrorAndExit("Invalid instruction!")
-	}
-
-	if len(b) < int(s) {
-		PrintErrorAndExit("Invalid memory write!")
 	}
 
 	var i byte
@@ -294,6 +286,7 @@ func VMTick(vm VMContext) VMContext {
 		b2 := vm.BM[vm.PC+2]
 
 		if (b1 & 0b11111) != (b2 & 0b11111) {
+			PrintErrorAndExit("Invalid instruction!")
 		}
 
 		if !VMValInfoIsIndirect(b1) {
