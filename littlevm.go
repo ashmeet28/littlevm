@@ -8,8 +8,7 @@ import (
 )
 
 type VMContext struct {
-	MM  []byte // Main Memory
-	ECM []byte // Environment Call Memory
+	MM []byte // Main Memory
 
 	BM []byte // Bytecode Memory
 	SM []byte // Stack Memory
@@ -74,11 +73,10 @@ var (
 
 func VMInit(bytecode []byte) VMContext {
 	vm := VMContext{
-		MM:  make([]byte, 0x1000),
-		ECM: make([]byte, 0x1000),
+		MM: make([]byte, 0x1000000),
 
-		BM: make([]byte, 0x1000),
-		SM: make([]byte, 0x1000),
+		BM: make([]byte, 0x1000000),
+		SM: make([]byte, 0x1000000),
 
 		PC: 0,
 		FP: 0,
@@ -791,10 +789,57 @@ func VMTick(vm VMContext) VMContext {
 
 	case OP_CONVERT:
 
+		b1 := vm.BM[vm.PC+1]
+		b2 := vm.BM[vm.PC+2]
+
+		if !(VMValInfoIsValid(b1) && VMValInfoIsValid(b2)) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		if VMValInfoIsIndirect(b2) {
+			PrintErrorAndExit("Invalid instruction!")
+		}
+
+		var vj uint64
+		vm, vj = VMValPop(vm, b1)
+
+		if VMValInfoIsSigned(b1) && (VMValSignBit(vj, VMValInfoSize(b1)) == 1) {
+			vj = vj | ((^uint64(0)) << (uint64(VMValInfoSize(b1)) * 8))
+		}
+
+		VMValW(vm.SM[vm.SP:], VMValInfoSize(b2), vj)
+		vm.SP = vm.SP + uint64(VMValInfoSize(b2))
+
+		vm.PC += 3
+
 	case OP_LOAD:
+		PrintErrorAndExit("Instruction has not been implemented!")
+
 	case OP_STORE:
+		PrintErrorAndExit("Instruction has not been implemented!")
 
 	case OP_STORE_STRING:
+
+		var b1 byte
+		var vj uint64
+
+		b1 = 0b101000
+
+		vm, vj = VMValPop(vm, b1)
+
+		if (vj >> 20) != 0x3 {
+			PrintErrorAndExit("Invalid memory address!")
+		}
+
+		var i uint64
+
+		for i = 0; vm.BM[vm.PC+i+1] != 0; i += 1 {
+			vm.MM[vj+i] = vm.BM[vm.PC+i+1]
+		}
+
+		vm.MM[vj+i] = 0
+
+		vm.PC = vm.PC + i + 2
 
 	default:
 		PrintErrorAndExit("Invalid instruction!")
@@ -824,6 +869,7 @@ func VMPrint(vm VMContext) {
 	fmt.Println(vm.SM[16 : 16*2])
 	fmt.Println(vm.SM[16*2 : 16*3])
 	fmt.Println(vm.SM[16*3 : 16*4])
+	fmt.Println(vm.MM[0x30_0000 : 0x30_0000+16])
 }
 
 func PrintErrorAndExit(s string) {
