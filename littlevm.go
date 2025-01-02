@@ -862,14 +862,14 @@ func VMRun(vm VMContext) {
 }
 
 func VMPrint(vm VMContext) {
-	fmt.Println(vm.PC)
-	fmt.Println(vm.FP)
-	fmt.Println(vm.SP)
-	fmt.Println(vm.SM[:16])
-	fmt.Println(vm.SM[16 : 16*2])
-	fmt.Println(vm.SM[16*2 : 16*3])
-	fmt.Println(vm.SM[16*3 : 16*4])
-	fmt.Println(vm.MM[0x30_0000 : 0x30_0000+16])
+	// fmt.Println(vm.PC)
+	// fmt.Println(vm.FP)
+	// fmt.Println(vm.SP)
+	// fmt.Println(vm.SM[:16])
+	// fmt.Println(vm.SM[16 : 16*2])
+	// fmt.Println(vm.SM[16*2 : 16*3])
+	// fmt.Println(vm.SM[16*3 : 16*4])
+	fmt.Println(vm.MM[0x30_0000 : 0x30_0000+32])
 }
 
 func PrintErrorAndExit(s string) {
