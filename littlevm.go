@@ -517,7 +517,10 @@ func VMTick(vm VMContext) VMContext {
 		vm.PC += 3
 
 	case OP_QUO:
+		PrintErrorAndExit("Instruction has not been implemented!")
+
 	case OP_REM:
+		PrintErrorAndExit("Instruction has not been implemented!")
 
 	case OP_EQL:
 
@@ -852,23 +855,36 @@ func VMTick(vm VMContext) VMContext {
 func VMRun(vm VMContext) {
 	for vm.Status == VMS_RUNNING {
 		vm = VMTick(vm)
-		VMPrint(vm)
-		time.Sleep(time.Millisecond * 250)
-	}
 
-	if vm.Status == VMS_HALT {
-		VMPrint(vm)
+		// VMPrint(vm)
+
+		if vm.Status == VMS_ECALL {
+			var i uint64
+			var buf []byte
+
+			for i = 0; vm.MM[0x30_0000+i] != 0; i += 1 {
+				buf = append(buf, vm.MM[0x30_0000+i])
+			}
+
+			fmt.Println(string(buf))
+
+			vm.Status = VMS_RUNNING
+		}
+
+		time.Sleep(time.Millisecond * 250)
 	}
 }
 
 func VMPrint(vm VMContext) {
-	// fmt.Println(vm.PC)
-	// fmt.Println(vm.FP)
-	// fmt.Println(vm.SP)
-	// fmt.Println(vm.SM[:16])
-	// fmt.Println(vm.SM[16 : 16*2])
-	// fmt.Println(vm.SM[16*2 : 16*3])
-	// fmt.Println(vm.SM[16*3 : 16*4])
+	fmt.Println(vm.PC)
+	fmt.Println(vm.FP)
+	fmt.Println(vm.SP)
+
+	fmt.Println(vm.SM[:16])
+	fmt.Println(vm.SM[16 : 16*2])
+	fmt.Println(vm.SM[16*2 : 16*3])
+	fmt.Println(vm.SM[16*3 : 16*4])
+
 	fmt.Println(vm.MM[0x30_0000 : 0x30_0000+32])
 }
 
