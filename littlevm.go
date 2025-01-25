@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 )
 
 type VMContext struct {
@@ -871,7 +870,7 @@ func VMRun(vm VMContext) {
 			vm.Status = VMS_RUNNING
 		}
 
-		time.Sleep(time.Millisecond * 250)
+		// time.Sleep(time.Millisecond * 250)
 	}
 }
 
